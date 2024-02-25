@@ -16,7 +16,7 @@ torch.manual_seed(seed)
 
 
 env = TimeLimit(
-    env=HIVPatient(domain_randomization=False), max_episode_steps=200
+    env=HIVPatient(domain_randomization=True), max_episode_steps=200
 )  # The time wrapper limits the number of steps in an episode at 200.
 # Now is the floor is yours to implement the agent and train it.
 
@@ -31,13 +31,13 @@ state_dim = env.observation_space.shape[0]
 
 config = {'nb_actions': nb_actions,
           'learning_rate': 0.001,
-          'gamma': 0.95,
+          'gamma': 0.97,
           'buffer_size': 1000000,
           'epsilon_min': 0.01,
           'epsilon_max': 1.,
           'epsilon_decay_period': 10000,
           'epsilon_delay_decay': 400,
-          'batch_size': 1024,
+          'batch_size': 512,
           'gradient_steps': 2,
           'update_target_strategy': 'ema', # or 'ema'
           'update_target_freq': 600,
@@ -48,12 +48,12 @@ config = {'nb_actions': nb_actions,
 
 
 class DQN(nn.Module):
-    def __init__(self, input_dim, nb_neurons, output_dim, depth):
+    def __init__(self, input_dim, nb_neurons, output_dim, depth, activation=nn.ReLU()):
         super(DQN, self).__init__()
         self.in_layer = nn.Linear(input_dim, nb_neurons)
         self.network = nn.ModuleList([nn.Linear(nb_neurons, nb_neurons) for _ in range(depth - 1)])
         self.out_layer = nn.Linear(nb_neurons, output_dim)
-        self.activation = nn.ReLU()
+        self.activation = activation
     
     def forward(self, x):
         x = self.activation(self.in_layer(x))
@@ -237,7 +237,7 @@ class dqn_agent:
         self.model.eval()
 
 
-model = DQN(state_dim, 512, nb_actions, depth=4).to(device)
+model = DQN(state_dim, 512, nb_actions, depth=4, activation=nn.LeakyReLU(negative_slope=0.2)).to(device)
 agent = dqn_agent(config, model)
 
 class ProjectAgent:
