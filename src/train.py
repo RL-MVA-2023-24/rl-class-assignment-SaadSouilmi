@@ -44,7 +44,8 @@ config = {'nb_actions': nb_actions,
           'update_target_tau': 0.001,
           'criterion': torch.nn.SmoothL1Loss(),
           'monitoring_nb_trials': 50,
-          'evaluation_frequency': 50}
+          'evaluation_frequency': 50,
+          'double_dqn': True}
 
 
 class DQN(nn.Module):
@@ -108,6 +109,7 @@ class dqn_agent:
         self.update_target_tau = config['update_target_tau'] if 'update_target_tau' in config.keys() else 0.005
         self.monitoring_nb_trials = config['monitoring_nb_trials'] if 'monitoring_nb_trials' in config.keys() else 0
         self.evaluation_frequency = config['evaluation_frequency']
+        self.double_dqn = config["double_dqn"]
     
     def act(self, state):
         return greedy_action(self.model, state)
@@ -142,15 +144,28 @@ class dqn_agent:
         return np.mean(val)
     
     def gradient_step(self):
-        if len(self.memory) > self.batch_size:
-            X, A, R, Y, D = self.memory.sample(self.batch_size)
-            QYmax = self.target_model(Y).max(1)[0].detach()
-            update = torch.addcmul(R, 1-D, QYmax, value=self.gamma)
-            QXA = self.model(X).gather(1, A.to(torch.long).unsqueeze(1))
-            loss = self.criterion(QXA, update.unsqueeze(1))
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step() 
+        if self.double_dqn:
+            if len(self.memory) > self.batch_size:
+                X, A, R, Y, D = self.memory.sample(self.batch_size)
+                evaluated_action = torch.argmax(self.model(Y).detach(), dim=1) # action is greedy w.r.t online network
+                QY = self.target_model(Y).detach() 
+                QYmax = QY.gather(1, evaluated_action.unsqueeze(1)).squeeze(1) # action evaluated on target network
+                update = torch.addcmul(R, 1-D, QYmax, value=self.gamma)
+                QXA = self.model(X).gather(1, A.to(torch.long).unsqueeze(1))
+                loss = self.criterion(QXA, update.unsqueeze(1))
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step() 
+        else:
+            if len(self.memory) > self.batch_size:
+                X, A, R, Y, D = self.memory.sample(self.batch_size)
+                QYmax = self.target_model(Y).max(1)[0].detach()
+                update = torch.addcmul(R, 1-D, QYmax, value=self.gamma)
+                QXA = self.model(X).gather(1, A.to(torch.long).unsqueeze(1))
+                loss = self.criterion(QXA, update.unsqueeze(1))
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step() 
     
     def train(self, env, max_episode):
         episode_return = []
@@ -262,5 +277,7 @@ class ProjectAgent:
 
 if __name__ == "__main__":
 
+
+    print(config)
     ep_return, disc_rewards, tot_rewards, v_init = agent.train(env, 4000)
-    agent.save(f"{os.getcwd()}/src/agent.pth")
+    
