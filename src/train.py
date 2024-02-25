@@ -6,6 +6,7 @@ from copy import deepcopy
 import random
 import os
 import torch.nn as nn
+from argparse import ArgumentParser
 
 
 seed = 1337
@@ -25,27 +26,39 @@ env = TimeLimit(
 # Don't modify the methods names and signatures, but you can add methods.
 # ENJOY!
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
 nb_actions = env.action_space.n
 state_dim = env.observation_space.shape[0]
 
+parser = ArgumentParser(description="Agent config")
+parser.add_argument("--learning_rate", default=0.001, type=float)
+parser.add_argument("--gamma", default=0.97, type=float)
+parser.add_argument("--buffer_size", default=1000000, type=float)
+parser.add_argument("--epsilon_min", default=0.01, type=float)
+parser.add_argument("--epsilon_max", default=1., type=float)
+parser.add_argument("--epsilon_decay_period", default=10000, type=int)
+parser.add_argument("--epsilon_delay_decay", default=400, type=int)
+parser.add_argument("--batch_size", default=512, type=int)
+parser.add_argument("--gradient_steps", default=2, type=int)
+parser.add_argument("--update_target_strategy", default="ema", type=str)
+parser.add_argument("--update_target_freq", default=600, type=int)
+parser.add_argument("--update-target_tau", default=0.001, type=float)
+parser.add_argument("--monitoring_nb_trials", default=50, type=int)
+parser.add_argument("--evaluation_frequency", default=50, type=int)
+parser.add_argument("--network_depth", default=4, type=int)
+parser.add_argument("--nb_neurons", default=512, type=int)
+
+
+args = parser.parse_args()
+
 config = {'nb_actions': nb_actions,
-          'learning_rate': 0.001,
-          'gamma': 0.97,
-          'buffer_size': 1000000,
-          'epsilon_min': 0.01,
-          'epsilon_max': 1.,
-          'epsilon_decay_period': 10000,
-          'epsilon_delay_decay': 400,
-          'batch_size': 512,
-          'gradient_steps': 2,
-          'update_target_strategy': 'ema', # or 'ema'
-          'update_target_freq': 600,
-          'update_target_tau': 0.001,
           'criterion': torch.nn.SmoothL1Loss(),
-          'monitoring_nb_trials': 50,
-          'evaluation_frequency': 50,
-          'double_dqn': True}
+          'double_dqn': True,
+          **vars(args)}
 
 
 class DQN(nn.Module):
@@ -63,7 +76,10 @@ class DQN(nn.Module):
         return self.out_layer(x)
 
 def greedy_action(network, state):
-    device = "mps" if next(network.parameters()).is_mps else "cpu"
+    if next(network.parameters()).is_cuda:
+        device = "cuda"
+    else:
+        device = "mps" if next(network.parameters()).is_mps else "cpu"
     with torch.no_grad():
         Q = network(torch.Tensor(state).unsqueeze(0).to(device))
         return torch.argmax(Q).item()
@@ -87,7 +103,10 @@ class ReplayBuffer:
 
 class dqn_agent:
     def __init__(self, config, model):
-        device = "mps" if next(model.parameters()).is_mps else "cpu"
+        if next(model.parameters()).is_cuda:
+            device = "cuda"
+        else:
+            device = "mps" if next(model.parameters()).is_mps else "cpu"
         self.nb_actions = config['nb_actions']
         self.gamma = config['gamma'] if 'gamma' in config.keys() else 0.95
         self.batch_size = config['batch_size'] if 'batch_size' in config.keys() else 100
@@ -252,7 +271,7 @@ class dqn_agent:
         self.model.eval()
 
 
-model = DQN(state_dim, 512, nb_actions, depth=4, activation=nn.LeakyReLU(negative_slope=0.2)).to(device)
+model = DQN(state_dim, config["nb_neurons"], nb_actions, depth=config["network_depth"], activation=nn.LeakyReLU(negative_slope=0.2)).to(device)
 agent = dqn_agent(config, model)
 
 class ProjectAgent:
