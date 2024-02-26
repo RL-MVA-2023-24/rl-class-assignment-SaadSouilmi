@@ -46,10 +46,10 @@ parser.add_argument("--batch_size", default=512, type=int)
 parser.add_argument("--gradient_steps", default=2, type=int)
 parser.add_argument("--update_target_strategy", default="ema", type=str)
 parser.add_argument("--update_target_freq", default=600, type=int)
-parser.add_argument("--update-target_tau", default=0.001, type=float)
+parser.add_argument("--update_target_tau", default=0.001, type=float)
 parser.add_argument("--monitoring_nb_trials", default=50, type=int)
 parser.add_argument("--evaluation_frequency", default=50, type=int)
-parser.add_argument("--network_depth", default=4, type=int)
+parser.add_argument("--network_depth", default=5, type=int)
 parser.add_argument("--nb_neurons", default=512, type=int)
 
 
@@ -249,6 +249,8 @@ class dqn_agent:
                         best_score = MC_tr
                         self.save(f"{os.getcwd()}/src/best_agent.pth")
                         print(f"Current best score: {best_score}")
+                    else:
+                        print(f"Current best score: {best_score}")
                 else:
                     episode_return.append(episode_cum_reward)
                     print("Episode ", '{:2d}'.format(episode), 
@@ -296,7 +298,7 @@ class ProjectAgent:
 
 if __name__ == "__main__":
 
-
+    print(device)
     print(config)
     ep_return, disc_rewards, tot_rewards, v_init = agent.train(env, 4000)
     
