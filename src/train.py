@@ -7,9 +7,10 @@ import random
 import os
 import torch.nn as nn
 from argparse import ArgumentParser
+from tqdm import tqdm
 
 
-seed = 1337
+seed = 42
 
 random.seed(seed)
 rng = np.random.default_rng(seed)
@@ -36,7 +37,7 @@ state_dim = env.observation_space.shape[0]
 
 parser = ArgumentParser(description="Agent config")
 parser.add_argument("--learning_rate", default=0.001, type=float)
-parser.add_argument("--gamma", default=0.97, type=float)
+parser.add_argument("--gamma", default=0.98, type=float)
 parser.add_argument("--buffer_size", default=1000000, type=float)
 parser.add_argument("--epsilon_min", default=0.01, type=float)
 parser.add_argument("--epsilon_max", default=1., type=float)
@@ -58,11 +59,15 @@ args = parser.parse_args()
 config = {'nb_actions': nb_actions,
           'criterion': torch.nn.SmoothL1Loss(),
           'double_dqn': True,
+          'nb_neurons_val': 512,
+          'nb_neurons_adv': 512,
+          'depth_val': 4,
+          'depth_adv': 4,
           **vars(args)}
 
 
 class DQN(nn.Module):
-    def __init__(self, input_dim, nb_neurons, output_dim, depth, activation=nn.ReLU()):
+    def __init__(self, input_dim, nb_neurons, output_dim, depth, activation=nn.SiLU()):
         super(DQN, self).__init__()
         self.in_layer = nn.Linear(input_dim, nb_neurons)
         self.network = nn.ModuleList([nn.Linear(nb_neurons, nb_neurons) for _ in range(depth - 1)])
@@ -74,6 +79,32 @@ class DQN(nn.Module):
         for hidden_layer in self.network:
             x = self.activation(hidden_layer(x))
         return self.out_layer(x)
+
+class Dueling_DQN(nn.Module):
+    def __init__(self, input_dim, nb_neurons_val, nb_neurons_adv, output_dim, depth_val, depth_adv, activation=nn.SiLU()):
+        super(Dueling_DQN, self).__init__()
+        self.in_layer_val = nn.Linear(input_dim, nb_neurons_val)
+        self.network_val = nn.ModuleList([nn.Linear(nb_neurons_val, nb_neurons_val) for _ in range(depth_val-1)])
+        self.out_layer_val = nn.Linear(nb_neurons_val, 1)
+
+        self.in_layer_adv = nn.Linear(input_dim, nb_neurons_adv)
+        self.network_adv = nn.ModuleList([nn.Linear(nb_neurons_adv, nb_neurons_adv) for _ in range(depth_adv-1)])
+        self.out_layer_adv = nn.Linear(nb_neurons_adv, output_dim)
+
+        self.activation = activation
+
+    def forward(self, x):
+        val = self.activation(self.in_layer_val(x))
+        for hidden_layer in self.network_val:
+            val = self.activation(hidden_layer(val))
+        val = self.out_layer_val(val)
+
+        adv = self.activation(self.in_layer_adv(x))
+        for hidden_layer in self.network_adv:
+            adv = self.activation(hidden_layer(adv))
+        adv = self.out_layer_adv(adv)
+
+        return val + adv - adv.mean()
 
 def greedy_action(network, state):
     if next(network.parameters()).is_cuda:
@@ -100,6 +131,18 @@ class ReplayBuffer:
         return list(map(lambda x:torch.Tensor(np.array(x)).to(self.device), list(zip(*batch))))
     def __len__(self):
         return len(self.data)
+
+def warm_up(agent, warm_up_len):
+    s, _ = env.reset()
+    for i in tqdm(range(warm_up_len), desc="warm up run for replay buffer"):
+        a = agent.act(s)
+        s_, r, d, t, _ = env.step(a)
+        agent.memory.append(s, a, r, s_, d)
+        if d or t:
+            s, _ = env.reset()
+        else:
+            s = s_
+
 
 class dqn_agent:
     def __init__(self, config, model):
@@ -273,7 +316,8 @@ class dqn_agent:
         self.model.eval()
 
 
-model = DQN(state_dim, config["nb_neurons"], nb_actions, depth=config["network_depth"], activation=nn.LeakyReLU(negative_slope=0.2)).to(device)
+#model = DQN(state_dim, config["nb_neurons"], nb_actions, depth=config["network_depth"], activation=nn.SiLU()).to(device)
+model = Dueling_DQN(state_dim, config["nb_neurons_val"], config["nb_neurons_adv"], nb_actions, depth_val=config["depth_val"], depth_adv=config["depth_adv"], activation=nn.SiLU()).to(device)
 agent = dqn_agent(config, model)
 
 class ProjectAgent:
@@ -300,5 +344,6 @@ if __name__ == "__main__":
 
     print(device)
     print(config)
+    warm_up(agent, 10000)
     ep_return, disc_rewards, tot_rewards, v_init = agent.train(env, 4000)
     
