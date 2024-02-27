@@ -59,8 +59,8 @@ args = parser.parse_args()
 config = {'nb_actions': nb_actions,
           'criterion': torch.nn.SmoothL1Loss(),
           'double_dqn': True,
-          'nb_neurons_val': 512,
-          'nb_neurons_adv': 512,
+          'nb_neurons_val': 1024,
+          'nb_neurons_adv': 1024,
           'depth_val': 4,
           'depth_adv': 4,
           **vars(args)}
