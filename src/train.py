@@ -15,6 +15,8 @@ seed = 42
 random.seed(seed)
 rng = np.random.default_rng(seed)
 torch.manual_seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 
 env = TimeLimit(
@@ -48,7 +50,7 @@ parser.add_argument("--gradient_steps", default=2, type=int)
 parser.add_argument("--update_target_strategy", default="ema", type=str)
 parser.add_argument("--update_target_freq", default=600, type=int)
 parser.add_argument("--update_target_tau", default=0.001, type=float)
-parser.add_argument("--monitoring_nb_trials", default=50, type=int)
+parser.add_argument("--monitoring_nb_trials", default=15, type=int)
 parser.add_argument("--evaluation_frequency", default=50, type=int)
 parser.add_argument("--network_depth", default=5, type=int)
 parser.add_argument("--nb_neurons", default=512, type=int)
@@ -61,8 +63,8 @@ config = {'nb_actions': nb_actions,
           'double_dqn': True,
           'nb_neurons_val': 1024,
           'nb_neurons_adv': 1024,
-          'depth_val': 4,
-          'depth_adv': 4,
+          'depth_val': 6,
+          'depth_adv': 6,
           **vars(args)}
 
 
